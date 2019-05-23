@@ -6,10 +6,14 @@
 #define WSPR_TONE_SPACING       146           // ~1.46 Hz
 #define WSPR_DELAY              683          // Delay value for WSPR
 #define WSPR_DEFAULT_FREQ       14095600UL
-#define FREQ_CALIBRATION        1780UL
+#define FREQ_CALIBRATION        1980UL
 
-#define BUTTON                  7
-#define LED_PIN                 10
+#define BUTTON_PIN              6
+#define RED_LED_PIN             8
+#define YELLOW_LED_PIN          9
+#define GREEN_LED_PIN           10
+
+#define DEBUG                   true
 
 Si5351 si5351;
 JTEncode jtencode;
@@ -33,11 +37,18 @@ uint16_t tone_delay, tone_spacing;
 
 void setup()
 {
-  Serial.println(F("Starting"));
+  if(DEBUG) Serial.println(F("Starting"));
   si5351.init(SI5351_CRYSTAL_LOAD_8PF, 0, 0);
-  pinMode(LED_PIN, OUTPUT);
-  digitalWrite(LED_PIN, LOW);
-  pinMode(BUTTON, INPUT_PULLUP);
+  
+  pinMode(RED_LED_PIN, OUTPUT);
+  pinMode(YELLOW_LED_PIN, OUTPUT);
+  pinMode(GREEN_LED_PIN, OUTPUT);
+
+  digitalWrite(RED_LED_PIN, LOW);
+  digitalWrite(YELLOW_LED_PIN, LOW);
+  digitalWrite(GREEN_LED_PIN, LOW);
+
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
 
   freq = WSPR_DEFAULT_FREQ + FREQ_CALIBRATION;
   symbol_count = WSPR_SYMBOL_COUNT;
@@ -51,46 +62,83 @@ void setup()
   
   Serial.begin(115200);
   ss.begin(GPSBaud);
+
+  all_leds_on();
+  delay(2000);
+  all_leds_off();
 }
 
 void loop()
-{ 
-  if (1) {  // Tuning
-  //if (gps.location.isValid()) {
+{
+  all_leds_off(); 
+  digitalWrite(GREEN_LED_PIN, HIGH);
+
+  int buttonState = digitalRead(BUTTON_PIN);
+  bool buttonPressed = false;
+  
+  if (buttonState == LOW) {
+    if(DEBUG)  Serial.println(F("Button pressed!"));
+    buttonPressed = true;
+    digitalWrite(YELLOW_LED_PIN, LOW);
+  }
+
+  
+  //if (1) {  // Tuning
+  if (buttonPressed) {
+    transmit_loop();
+  }
+  else if (gps.location.isValid()) {
+    digitalWrite(YELLOW_LED_PIN, HIGH);
     TinyGPSTime t = gps.time;
     uint8_t seconds = t.second();
     uint8_t minutes = t.minute();
-    if ( (minutes %2 == 0) and seconds <= 1) {
-      Serial.println(F("Transmit"));
-      ss.end();
-      si5351.init(SI5351_CRYSTAL_LOAD_8PF, 0, 0);
-      si5351.drive_strength(SI5351_CLK0, SI5351_DRIVE_8MA); // Set for max power if desired
-      si5351.output_enable(SI5351_CLK0, 0); // Disable the clock initially
-      set_tx_buffer();
-      encode();
-      ss.begin(GPSBaud);
+    if ((minutes %2 == 0) and seconds <= 1) {
+      transmit();
     } else {
       calcLocator(loc, gps.location.lat(), gps.location.lng());
-      Serial.print(F("calculated locator: "));
-      Serial.print(loc);
-      Serial.print(F(" "));
-      Serial.print(minutes);
-      Serial.print(F(" minutes "));
-      Serial.print(seconds);
-      Serial.println(F(" seconds"));
+      if (DEBUG) {
+        Serial.print(F("calculated locator: "));
+        Serial.print(loc);
+        Serial.print(F(" "));
+        Serial.print(minutes);
+        Serial.print(F(" minutes "));
+        Serial.print(seconds);
+        Serial.println(F(" seconds"));
+      }
     }
   } else {
-    printFloat(gps.location.lat(), gps.location.isValid(), 11, 6);
-    printFloat(gps.location.lng(), gps.location.isValid(), 12, 6);
-    printDateTime(gps.date, gps.time);
-    Serial.println(F("Invalid fix"));
+    if(DEBUG) {
+      printFloat(gps.location.lat(), gps.location.isValid(), 11, 6);
+      printFloat(gps.location.lng(), gps.location.isValid(), 12, 6);
+      printDateTime(gps.date, gps.time);
+      Serial.println(F("Invalid fix"));
+    }
   }
-  smartDelay(1000);
+  smartDelay(200);
 
   if (millis() > 5000 && gps.charsProcessed() < 10)
     Serial.println("No GPS data received: check wiring");
 }
 
+void transmit()
+{
+  Serial.println(F("Transmit"));
+  ss.end();
+  si5351.init(SI5351_CRYSTAL_LOAD_8PF, 0, 0);
+  si5351.drive_strength(SI5351_CLK0, SI5351_DRIVE_8MA); // Set for max power if desired
+  si5351.output_enable(SI5351_CLK0, 0); // Disable the clock initially
+  set_tx_buffer();
+  encode();
+  ss.begin(GPSBaud);
+}
+
+void transmit_loop()
+{
+  while(true) {
+    transmit();
+    smartDelay(9000);
+  }
+}
 
 void encode()
 {
@@ -99,7 +147,8 @@ void encode()
   // Reset the tone to the base frequency and turn on the output
   si5351.output_enable(SI5351_CLK0, 0);
   // si5351.output_enable(SI5351_CLK0, 1);
-  digitalWrite(LED_PIN, HIGH);
+  digitalWrite(GREEN_LED_PIN, LOW);
+  digitalWrite(RED_LED_PIN, HIGH);
 
   for(i = 0; i < symbol_count; i++)
   {
@@ -109,7 +158,7 @@ void encode()
   
   // Turn off the output
   si5351.output_enable(SI5351_CLK0, 0); 
-  digitalWrite(LED_PIN, LOW);
+  digitalWrite(RED_LED_PIN, LOW);
 }
 
 void set_tx_buffer()
@@ -229,5 +278,19 @@ static void printStr(const char *str, int len)
   for (int i=0; i<len; ++i)
     Serial.print(i<slen ? str[i] : ' ');
   smartDelay(0);
+}
+
+static void all_leds_off()
+{
+  digitalWrite(RED_LED_PIN, LOW);
+  digitalWrite(YELLOW_LED_PIN, LOW);
+  digitalWrite(GREEN_LED_PIN, LOW);
+}
+
+static void all_leds_on()
+{
+  digitalWrite(RED_LED_PIN, HIGH);
+  digitalWrite(YELLOW_LED_PIN, HIGH);
+  digitalWrite(GREEN_LED_PIN, HIGH);
 }
 
