@@ -6,7 +6,6 @@
 #define WSPR_TONE_SPACING       146           // ~1.46 Hz
 #define WSPR_DELAY              683          // Delay value for WSPR
 #define WSPR_DEFAULT_FREQ       14095600UL
-#define FREQ_CALIBRATION        1980UL
 
 #define BUTTON_PIN              6
 #define RED_LED_PIN             8
@@ -27,10 +26,13 @@ TinyGPSPlus gps;
 // The serial connection to the GPS device
 SoftwareSerial ss(RXPin, TXPin);
 
-unsigned long freq;
+uint32_t frequencies[5] = { 14095600, 10138700, 7038600, 18104600, 21094600  };
+int current_frequency = 0;
+
 char call[] = "K1FM";
 char loc[] = "FN30";
-uint8_t dbm = 5;
+int calvalue = -3600; uint8_t dbm = 0;  int32_t freq_audio = 1450;
+//int calvalue = -3850; uint8_t dbm = 23; int32_t freq_audio = 1550;
 uint8_t tx_buffer[255];
 uint8_t symbol_count;
 uint16_t tone_delay, tone_spacing;
@@ -38,7 +40,7 @@ uint16_t tone_delay, tone_spacing;
 void setup()
 {
   if(DEBUG) Serial.println(F("Starting"));
-  si5351.init(SI5351_CRYSTAL_LOAD_8PF, 0, 0);
+  si5351.init(SI5351_CRYSTAL_LOAD_8PF, 0, calvalue);
   
   pinMode(RED_LED_PIN, OUTPUT);
   pinMode(YELLOW_LED_PIN, OUTPUT);
@@ -50,7 +52,6 @@ void setup()
 
   pinMode(BUTTON_PIN, INPUT_PULLUP);
 
-  freq = WSPR_DEFAULT_FREQ + FREQ_CALIBRATION;
   symbol_count = WSPR_SYMBOL_COUNT;
   tone_spacing = WSPR_TONE_SPACING;
   tone_delay = WSPR_DELAY;
@@ -68,52 +69,81 @@ void setup()
   all_leds_off();
 }
 
+void nextFrequency() {
+  current_frequency = ++current_frequency % 5;
+  if(DEBUG) Serial.print(F("Now working on "));
+  if(DEBUG) Serial.println(frequencies[current_frequency]);
+  int i;
+  for (i = 0; i <= current_frequency; i++) {
+    all_leds_on();
+    smartDelay(300);
+    all_leds_off();
+    smartDelay(300);
+  }
+}
+
+unsigned short measureButtonTime() {
+  int buttonState = digitalRead(BUTTON_PIN);
+  unsigned long start = millis();
+  while (buttonState == LOW) {
+    buttonState = digitalRead(BUTTON_PIN);
+  }
+  unsigned long duration = millis() - start;
+  return duration;
+}
+
 void loop()
 {
   all_leds_off(); 
   digitalWrite(GREEN_LED_PIN, HIGH);
 
   int buttonState = digitalRead(BUTTON_PIN);
-  bool buttonPressed = false;
-  
+  bool forceTransmit = false;
+
   if (buttonState == LOW) {
-    if(DEBUG)  Serial.println(F("Button pressed!"));
-    buttonPressed = true;
-    digitalWrite(YELLOW_LED_PIN, LOW);
+    unsigned long duration = measureButtonTime();
+    if(DEBUG) Serial.println(F("Button pressed!"));
+    if(DEBUG) Serial.println(duration);
+    if (duration < 500) {
+      forceTransmit = true;
+      digitalWrite(YELLOW_LED_PIN, LOW);      
+    } else {
+      nextFrequency();
+    }
   }
 
-  
-  //if (1) {  // Tuning
-  if (buttonPressed) {
-    transmit_loop();
-  }
-  else if (gps.location.isValid()) {
-    digitalWrite(YELLOW_LED_PIN, HIGH);
-    TinyGPSTime t = gps.time;
-    uint8_t seconds = t.second();
-    uint8_t minutes = t.minute();
-    if ((minutes %2 == 0) and seconds <= 1) {
-      transmit();
-    } else {
+  if (gps.location.isValid()) {
+      digitalWrite(YELLOW_LED_PIN, HIGH);
       calcLocator(loc, gps.location.lat(), gps.location.lng());
       if (DEBUG) {
         Serial.print(F("calculated locator: "));
         Serial.print(loc);
-        Serial.print(F(" "));
-        Serial.print(minutes);
-        Serial.print(F(" minutes "));
-        Serial.print(seconds);
-        Serial.println(F(" seconds"));
-      }
-    }
-  } else {
-    if(DEBUG) {
+      } 
+  } else if (forceTransmit) { // !gps.location.isValid()
+    transmit_loop();
+  } else { // Invalid Fix
+    digitalWrite(YELLOW_LED_PIN, LOW);
+    if(DEBUG) { 
       printFloat(gps.location.lat(), gps.location.isValid(), 11, 6);
       printFloat(gps.location.lng(), gps.location.isValid(), 12, 6);
       printDateTime(gps.date, gps.time);
-      Serial.println(F("Invalid fix"));
+      Serial.print(gps.satellites.value());
+      Serial.println(F(" Invalid fix"));
+    }
+    
+    TinyGPSTime t = gps.time;
+    TinyGPSDate d = gps.date;
+    uint8_t seconds = t.second();
+    uint8_t minutes = t.minute();
+    uint16_t year   = d.year();
+
+    if ((minutes %2 == 0) and seconds <= 1 and year > 2000 and year < 2080) { // good datetime
+      transmit();
+    } else { // bad datetime
+      digitalWrite(GREEN_LED_PIN, !digitalRead(GREEN_LED_PIN));
     }
   }
+  
   smartDelay(200);
 
   if (millis() > 5000 && gps.charsProcessed() < 10)
@@ -124,7 +154,7 @@ void transmit()
 {
   Serial.println(F("Transmit"));
   ss.end();
-  si5351.init(SI5351_CRYSTAL_LOAD_8PF, 0, 0);
+  si5351.init(SI5351_CRYSTAL_LOAD_8PF, 0, calvalue);
   si5351.drive_strength(SI5351_CLK0, SI5351_DRIVE_8MA); // Set for max power if desired
   si5351.output_enable(SI5351_CLK0, 0); // Disable the clock initially
   set_tx_buffer();
@@ -136,7 +166,7 @@ void transmit_loop()
 {
   while(true) {
     transmit();
-    smartDelay(9000);
+    smartDelay(8200);
   }
 }
 
@@ -152,7 +182,7 @@ void encode()
 
   for(i = 0; i < symbol_count; i++)
   {
-      si5351.set_freq((freq * 100) + (tx_buffer[i] * tone_spacing), SI5351_CLK0);
+      si5351.set_freq( (frequencies[current_frequency] * 100) + (freq_audio * 100) + (tx_buffer[i] * tone_spacing), SI5351_CLK0);
       delay(tone_delay);
   }
   
