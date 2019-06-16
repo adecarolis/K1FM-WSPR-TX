@@ -29,10 +29,9 @@ SoftwareSerial ss(RXPin, TXPin);
 uint32_t frequencies[5] = { 14095600, 10138700, 7038600, 18104600, 21094600  };
 int current_frequency = 0;
 
-char call[] = "K1FM";
+char call[] = "MYCALL";
 char loc[] = "FN30";
-int calvalue = -3600; uint8_t dbm = 0;  int32_t freq_audio = 1450;
-//int calvalue = -3850; uint8_t dbm = 23; int32_t freq_audio = 1550;
+int calvalue = -3850; uint8_t dbm = 23; int32_t freq_audio = 1550;
 uint8_t tx_buffer[255];
 uint8_t symbol_count;
 uint16_t tone_delay, tone_spacing;
@@ -117,17 +116,19 @@ void loop()
       calcLocator(loc, gps.location.lat(), gps.location.lng());
       if (DEBUG) {
         Serial.print(F("calculated locator: "));
-        Serial.print(loc);
+        Serial.println(loc);
       } 
-  } else if (forceTransmit) { // !gps.location.isValid()
+  }
+  
+  if (forceTransmit) { // !gps.location.isValid()
     transmit_loop();
   } else { // Invalid Fix
-    digitalWrite(YELLOW_LED_PIN, LOW);
     if(DEBUG) { 
       printFloat(gps.location.lat(), gps.location.isValid(), 11, 6);
       printFloat(gps.location.lng(), gps.location.isValid(), 12, 6);
       printDateTime(gps.date, gps.time);
       Serial.print(gps.satellites.value());
+      digitalWrite(YELLOW_LED_PIN, LOW);
       Serial.println(F(" Invalid fix"));
     }
     
@@ -137,10 +138,14 @@ void loop()
     uint8_t minutes = t.minute();
     uint16_t year   = d.year();
 
-    if ((minutes %2 == 0) and seconds <= 1 and year > 2000 and year < 2080) { // good datetime
-      transmit();
-    } else { // bad datetime
-      digitalWrite(GREEN_LED_PIN, !digitalRead(GREEN_LED_PIN));
+    if (year > 2000 and year < 2080) { // The time is correct
+      digitalWrite(GREEN_LED_PIN, HIGH);
+      if ((minutes %2 == 0) and seconds <= 1) {
+        transmit();
+        smartDelay(1000);
+      }
+    } else { // No valid time
+      digitalWrite(GREEN_LED_PIN, !digitalRead(GREEN_LED_PIN)); // Blink
     }
   }
   
