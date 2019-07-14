@@ -1,3 +1,30 @@
+//
+// K1FM-WSPR-TX
+//
+// Code based on JTEncode by Jason Milldrum as well as
+// on TinyGPSPlus by Mikal Hart
+//
+// Permission is hereby granted, free of charge, to any person obtaining
+// a copy of this software and associated documentation files (the
+// "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish,
+// distribute, sublicense, and/or sell copies of the Software, and to
+// permit persons to whom the Software is furnished to do so, subject
+// to the following conditions:
+//
+// The above copyright notice and this permission notice shall be
+// included in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+// IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR
+// ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+// CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+// WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+//
+
+
 #include <TinyGPS++.h>
 #include <SoftwareSerial.h>
 #include <si5351.h>
@@ -38,9 +65,9 @@ uint16_t tone_delay, tone_spacing;
 
 void setup()
 {
-  if(DEBUG) Serial.println(F("Starting"));
+  if (DEBUG) Serial.println(F("Starting"));
   si5351.init(SI5351_CRYSTAL_LOAD_8PF, 0, calvalue);
-  
+
   pinMode(RED_LED_PIN, OUTPUT);
   pinMode(YELLOW_LED_PIN, OUTPUT);
   pinMode(GREEN_LED_PIN, OUTPUT);
@@ -57,9 +84,9 @@ void setup()
 
   si5351.drive_strength(SI5351_CLK0, SI5351_DRIVE_8MA); // Set for max power if desired
   si5351.output_enable(SI5351_CLK0, 0); // Disable the clock initially
-  
+
   set_tx_buffer();
-  
+
   Serial.begin(115200);
   ss.begin(GPSBaud);
 
@@ -70,8 +97,8 @@ void setup()
 
 void nextFrequency() {
   current_frequency = ++current_frequency % 5;
-  if(DEBUG) Serial.print(F("Now working on "));
-  if(DEBUG) Serial.println(frequencies[current_frequency]);
+  if (DEBUG) Serial.print(F("Now working on "));
+  if (DEBUG) Serial.println(frequencies[current_frequency]);
   int i;
   for (i = 0; i <= current_frequency; i++) {
     all_leds_on();
@@ -93,7 +120,7 @@ unsigned short measureButtonTime() {
 
 void loop()
 {
-  all_leds_off(); 
+  all_leds_off();
   digitalWrite(GREEN_LED_PIN, HIGH);
 
   int buttonState = digitalRead(BUTTON_PIN);
@@ -101,29 +128,29 @@ void loop()
 
   if (buttonState == LOW) {
     unsigned long duration = measureButtonTime();
-    if(DEBUG) Serial.println(F("Button pressed!"));
-    if(DEBUG) Serial.println(duration);
+    if (DEBUG) Serial.println(F("Button pressed!"));
+    if (DEBUG) Serial.println(duration);
     if (duration < 500) {
       forceTransmit = true;
-      digitalWrite(YELLOW_LED_PIN, LOW);      
+      digitalWrite(YELLOW_LED_PIN, LOW);
     } else {
       nextFrequency();
     }
   }
 
   if (gps.location.isValid()) {
-      digitalWrite(YELLOW_LED_PIN, HIGH);
-      calcLocator(loc, gps.location.lat(), gps.location.lng());
-      if (DEBUG) {
-        Serial.print(F("calculated locator: "));
-        Serial.println(loc);
-      } 
+    digitalWrite(YELLOW_LED_PIN, HIGH);
+    calcLocator(loc, gps.location.lat(), gps.location.lng());
+    if (DEBUG) {
+      Serial.print(F("calculated locator: "));
+      Serial.println(loc);
+    }
   }
-  
+
   if (forceTransmit) { // !gps.location.isValid()
     transmit_loop();
   } else { // Invalid Fix
-    if(DEBUG) { 
+    if (DEBUG) {
       printFloat(gps.location.lat(), gps.location.isValid(), 11, 6);
       printFloat(gps.location.lng(), gps.location.isValid(), 12, 6);
       printDateTime(gps.date, gps.time);
@@ -131,7 +158,7 @@ void loop()
       digitalWrite(YELLOW_LED_PIN, LOW);
       Serial.println(F(" Invalid fix"));
     }
-    
+
     TinyGPSTime t = gps.time;
     TinyGPSDate d = gps.date;
     uint8_t seconds = t.second();
@@ -140,7 +167,7 @@ void loop()
 
     if (year > 2000 and year < 2080) { // The time is correct
       digitalWrite(GREEN_LED_PIN, HIGH);
-      if ((minutes %2 == 0) and seconds <= 1) {
+      if ((minutes % 2 == 0) and seconds <= 1) {
         transmit();
         smartDelay(1000);
       }
@@ -148,7 +175,7 @@ void loop()
       digitalWrite(GREEN_LED_PIN, !digitalRead(GREEN_LED_PIN)); // Blink
     }
   }
-  
+
   smartDelay(200);
 
   if (millis() > 5000 && gps.charsProcessed() < 10)
@@ -169,7 +196,7 @@ void transmit()
 
 void transmit_loop()
 {
-  while(true) {
+  while (true) {
     transmit();
     smartDelay(8200);
   }
@@ -185,14 +212,14 @@ void encode()
   digitalWrite(GREEN_LED_PIN, LOW);
   digitalWrite(RED_LED_PIN, HIGH);
 
-  for(i = 0; i < symbol_count; i++)
+  for (i = 0; i < symbol_count; i++)
   {
-      si5351.set_freq( (frequencies[current_frequency] * 100) + (freq_audio * 100) + (tx_buffer[i] * tone_spacing), SI5351_CLK0);
-      delay(tone_delay);
+    si5351.set_freq( (frequencies[current_frequency] * 100) + (freq_audio * 100) + (tx_buffer[i] * tone_spacing), SI5351_CLK0);
+    delay(tone_delay);
   }
-  
+
   // Turn off the output
-  si5351.output_enable(SI5351_CLK0, 0); 
+  si5351.output_enable(SI5351_CLK0, 0);
   digitalWrite(RED_LED_PIN, LOW);
 }
 
@@ -238,7 +265,7 @@ void calcLocator(char *dst, double lat, double lon) {
 static void smartDelay(unsigned long ms)
 {
   unsigned long start = millis();
-  do 
+  do
   {
     while (ss.available())
       gps.encode(ss.read());
@@ -259,7 +286,7 @@ static void printFloat(float val, bool valid, int len, int prec)
     int vi = abs((int)val);
     int flen = prec + (val < 0.0 ? 2 : 1); // . and -
     flen += vi >= 1000 ? 4 : vi >= 100 ? 3 : vi >= 10 ? 2 : 1;
-    for (int i=flen; i<len; ++i)
+    for (int i = flen; i < len; ++i)
       Serial.print(' ');
   }
   smartDelay(0);
@@ -271,10 +298,10 @@ static void printInt(unsigned long val, bool valid, int len)
   if (valid)
     sprintf(sz, "%ld", val);
   sz[len] = 0;
-  for (int i=strlen(sz); i<len; ++i)
+  for (int i = strlen(sz); i < len; ++i)
     sz[i] = ' ';
-  if (len > 0) 
-    sz[len-1] = ' ';
+  if (len > 0)
+    sz[len - 1] = ' ';
   Serial.print(sz);
   smartDelay(0);
 }
@@ -291,7 +318,7 @@ static void printDateTime(TinyGPSDate &d, TinyGPSTime &t)
     sprintf(sz, "%02d/%02d/%02d ", d.month(), d.day(), d.year());
     Serial.print(sz);
   }
-  
+
   if (!t.isValid())
   {
     Serial.print(F("******** "));
@@ -310,8 +337,8 @@ static void printDateTime(TinyGPSDate &d, TinyGPSTime &t)
 static void printStr(const char *str, int len)
 {
   int slen = strlen(str);
-  for (int i=0; i<len; ++i)
-    Serial.print(i<slen ? str[i] : ' ');
+  for (int i = 0; i < len; ++i)
+    Serial.print(i < slen ? str[i] : ' ');
   smartDelay(0);
 }
 
