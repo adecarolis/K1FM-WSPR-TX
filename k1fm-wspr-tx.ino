@@ -53,12 +53,23 @@ TinyGPSPlus gps;
 // The serial connection to the GPS device
 SoftwareSerial ss(RXPin, TXPin);
 
+// Pre-programmed WSPR Frequencies
 uint32_t frequencies[5] = { 14095600, 10138700, 7038600, 18104600, 21094600  };
 int current_frequency = 0;
 
+// Callsign and locator (Eg. K1FM - FN30)
 char call[] = "MYCALL";
-char loc[] = "FN30";
-int calvalue = -3850; uint8_t dbm = 23; int32_t freq_audio = 1550;
+char loc[] = "AA00";
+
+// Calibration value (use https://github.com/etherkit/Si5351Arduino/tree/master/examples/si5351_calibration )
+int calvalue = -3850;
+
+// Power output (21 dBm ~ 120 mW) 
+uint8_t dbm = 21;
+
+// Audio frequency to use
+int32_t freq_audio = 1550;
+
 uint8_t tx_buffer[255];
 uint8_t symbol_count;
 uint16_t tone_delay, tone_spacing;
